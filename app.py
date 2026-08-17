@@ -54,7 +54,7 @@ def translate_text(client: genai.Client, text: str) -> str:
 
     try:
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-3-flash-preview',
             contents=text,
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_INSTRUCTION,
