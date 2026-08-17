@@ -5,7 +5,7 @@ from docx import Document
 from pdf2docx import Converter
 from google import genai
 from google.genai import types
-
+import time
 # ---------------------------------------------------------------------------
 # STRONA I KONFIGURACJA STREAMLIT
 # ---------------------------------------------------------------------------
@@ -48,23 +48,31 @@ def get_gemini_client(key: str):
     return genai.Client(api_key=key)
 
 def translate_text(client: genai.Client, text: str) -> str:
-    """Tłumaczy fragment tekstu przy użyciu Gemini API."""
+    """Tłumaczy fragment tekstu przy użyciu Gemini API z obsługą limitów zapytań."""
     if not text or not text.strip():
         return text
 
-    try:
-        response = client.models.generate_content(
-            model='gemini-3-flash-preview',
-            contents=text,
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_INSTRUCTION,
-                temperature=0.2,
-            ),
-        )
-        return response.text.strip() if response.text else text
-    except Exception as e:
-        st.warning(f"Błąd tłumaczenia fragmentu tekstu: {e}")
-        return text
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(
+                model='gemini-3-flash-preview',
+                contents=text,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_INSTRUCTION,
+                    temperature=0.2,
+                ),
+            )
+            time.sleep(12)  # Odczekuje 12 s, by nie przekroczyć darmowego limitu 5 zapytań/min
+            return response.text.strip() if response.text else text
+        except Exception as e:
+            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                st.warning(f"Osiągnięto limit zapytań. Odczekuję 15 sekund przed ponowną próbą ({attempt + 1}/{max_retries})...")
+                time.sleep(15)
+            else:
+                st.warning(f"Błąd tłumaczenia fragmentu tekstu: {e}")
+                return text
+    return text
 
 # ---------------------------------------------------------------------------
 # TŁUMACZENIE PLIKÓW DOCX
