@@ -1,0 +1,4 @@
+streamlit
+python-docx
+pdf2docx
+google-genai
