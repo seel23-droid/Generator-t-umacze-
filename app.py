@@ -138,10 +138,16 @@ uploaded_file = st.file_uploader(
     help="Obsługiwane są pliki w formacie PDF oraz Microsoft Word (.docx)"
 )
 
+# Inicjalizacja stanu sesji dla pobierania pliku
+if "translated_bytes" not in st.session_state:
+    st.session_state.translated_bytes = None
+if "translated_filename" not in st.session_state:
+    st.session_state.translated_filename = None
+
 if uploaded_file is not None:
     file_ext = os.path.splitext(uploaded_file.name)[1].lower()
     file_name_without_ext = os.path.splitext(uploaded_file.name)[0]
-    
+
     st.info(f"Wgranym plik: **{uploaded_file.name}** ({file_ext.upper()})")
 
     if st.button("🚀 Rozpocznij tłumaczenie", type="primary"):
@@ -149,6 +155,10 @@ if uploaded_file is not None:
             st.error("Proszę wprowadzić klucz API Gemini w panelu bocznym!")
         else:
             try:
+                # Resetujemy poprzedni zapis przed nowym tłumaczeniem
+                st.session_state.translated_bytes = None
+                st.session_state.translated_filename = None
+
                 client = get_gemini_client(api_key)
                 progress_bar = st.progress(0.0)
                 status_text = st.empty()
@@ -157,15 +167,12 @@ if uploaded_file is not None:
                     input_file_path = os.path.join(temp_dir, uploaded_file.name)
                     output_docx_path = os.path.join(temp_dir, f"{file_name_without_ext}_PL.docx")
 
-                    # Zapisujemy wgrany plik w katalogu tymczasowym
                     with open(input_file_path, "wb") as f:
                         f.write(uploaded_file.getbuffer())
 
-                    # Proces dla plików PDF
                     if file_ext == ".pdf":
-                        status_text.text("Krok 1/2: Konwersja PDF do formatu DOCX (odtwarzanie układu)...")
+                        status_text.text("Krok 1/2: Konwersja PDF do formatu DOCX...")
                         temp_docx_from_pdf = os.path.join(temp_dir, "temp_conv.docx")
-                        
                         cv = Converter(input_file_path)
                         cv.convert(temp_docx_from_pdf, start=0, end=None)
                         cv.close()
@@ -173,23 +180,28 @@ if uploaded_file is not None:
                         status_text.text("Krok 2/2: Tłumaczenie treści...")
                         translate_docx_file(client, temp_docx_from_pdf, output_docx_path, progress_bar, status_text)
 
-                    # Proces dla plików DOCX
                     elif file_ext == ".docx":
                         status_text.text("Tłumaczenie treści dokumentu Word...")
                         translate_docx_file(client, input_file_path, output_docx_path, progress_bar, status_text)
 
                     status_text.text("Gotowe!")
                     progress_bar.progress(1.0)
-                    st.success("Tłumaczenie zakończone sukcesem!")
 
-                    # Odczyt wygenerowanego pliku do przycisku pobierania
-                    with open(output_docx_path, "rb") as translated_file:
-                        st.download_button(
-                            label="📥 Pobierz przetłumaczony dokument (.docx)",
-                            data=translated_file.read(),
-                            file_name=f"{file_name_without_ext}_PL.docx",
-                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                        )
+                    # Zapisujemy wygenerowane bajty w pamięci sesji
+                    with open(output_docx_path, "rb") as f:
+                        st.session_state.translated_bytes = f.read()
+                        st.session_state.translated_filename = f"{file_name_without_ext}_PL.docx"
 
             except Exception as e:
                 st.error(f"Wystąpił błąd podczas przetwarzania pliku: {e}")
+
+    # Wyświetlanie przycisku pobierania, jeśli plik jest zapisany w pamięci sesji
+    if st.session_state.translated_bytes is not None:
+        st.success("Tłumaczenie zakończone sukcesem!")
+        st.download_button(
+            label="📥 Pobierz przetłumaczony dokument (.docx)",
+            data=st.session_state.translated_bytes,
+            file_name=st.session_state.translated_filename,
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            type="primary"
+        )
